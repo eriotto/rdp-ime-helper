@@ -17,6 +17,7 @@ internal sealed class KeyboardHook : IDisposable
     private readonly HOOKPROC _mouseProc;
     private UnhookWindowsHookExSafeHandle? _keyboardHook;
     private UnhookWindowsHookExSafeHandle? _mouseHook;
+    private volatile bool _forceConversion;
 
     public KeyboardHook()
     {
@@ -25,6 +26,15 @@ internal sealed class KeyboardHook : IDisposable
         _keyboardProc = KeyboardProc;
         _mouseProc = MouseProc;
     }
+
+    /// <summary>ローカルでも強制的に US→JIS 変換を有効にする（テスト用）。</summary>
+    public bool ForceConversion
+    {
+        get => _forceConversion;
+        set => _forceConversion = value;
+    }
+
+    public bool IsConversionActive => _forceConversion || LayoutMonitor.IsConversionConditionMet();
 
     public void Install()
     {
@@ -69,7 +79,7 @@ internal sealed class KeyboardHook : IDisposable
                         msg == PInvoke.WM_KEYDOWN || msg == PInvoke.WM_SYSKEYDOWN,
                         data->time);
 
-                    var result = _processor.Process(e);
+                    var result = _processor.Process(e, IsConversionActive);
                     Execute(result);
                     if (result.Suppress)
                     {
