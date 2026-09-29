@@ -25,9 +25,11 @@ internal sealed class TrayApp : ApplicationContext
             UpdateTooltip();
         };
 
+        // ToolStripItem.Visible の getter はメニュー非表示中は常に false を返すので、判定結果は変数で持つ
+        bool ignoreRemoteSet = LayoutMonitor.IsIgnoreRemoteKeyboardLayoutSet();
         var ignoreRemoteItem = new ToolStripMenuItem("IgnoreRemoteKeyboardLayout を設定する（管理者）")
         {
-            Visible = !LayoutMonitor.IsIgnoreRemoteKeyboardLayoutSet(),
+            Visible = !ignoreRemoteSet,
         };
         ignoreRemoteItem.Click += (_, _) => _layout.RequestSetIgnoreRemoteKeyboardLayout(set =>
         {
@@ -37,7 +39,7 @@ internal sealed class TrayApp : ApplicationContext
                     : "IgnoreRemoteKeyboardLayout を設定できませんでした。",
                 set ? ToolTipIcon.Info : ToolTipIcon.Warning);
         });
-        Logger.Log($"IgnoreRemoteKeyboardLayout: {(ignoreRemoteItem.Visible ? "未設定" : "設定済み")}");
+        Logger.Log($"IgnoreRemoteKeyboardLayout: {(ignoreRemoteSet ? "設定済み" : "未設定")}");
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(forceItem);
