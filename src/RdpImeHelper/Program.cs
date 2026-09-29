@@ -13,7 +13,22 @@ internal static class Program
             return;
         }
 
-        ApplicationConfiguration.Initialize();
-        Application.Run(new TrayApp());
+        Logger.Start();
+        Logger.Log("起動");
+        try
+        {
+            ApplicationConfiguration.Initialize();
+            Application.Run(new TrayApp());
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"異常終了: {ex}");
+            throw;
+        }
+        finally
+        {
+            Logger.Log("終了");
+            Logger.Stop();
+        }
     }
 }
