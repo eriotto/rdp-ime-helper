@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: eriotto.RdpImeHelper
+PackageVersion: __VERSION__
+PackageLocale: en-US
+Publisher: eriotto
+PublisherUrl: https://github.com/eriotto
+PublisherSupportUrl: https://github.com/eriotto/rdp-ime-helper/issues
+PackageName: RdpImeHelper
+PackageUrl: https://github.com/eriotto/rdp-ime-helper
+License: MIT
+LicenseUrl: https://github.com/eriotto/rdp-ime-helper/blob/main/LICENSE
+ShortDescription: Tray tool for typing Japanese comfortably over RDP from an iPad with a US keyboard.
+Description: |-
+  RdpImeHelper runs in the system tray on Japanese Windows accessed over Remote Desktop.
+  Tap left Alt to turn the IME off and right Alt to turn it on, and type symbols as printed
+  on a US keyboard while Windows keeps the Japanese (JIS) layout.
+Moniker: rdp-ime-helper
+Tags:
+- ime
+- japanese
+- keyboard
+- rdp
+- remote-desktop
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
