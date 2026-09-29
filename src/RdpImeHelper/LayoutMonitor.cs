@@ -49,8 +49,9 @@ internal sealed unsafe class LayoutMonitor
     public void OnKeyDown()
     {
         var judgement = DetectForeground();
-        if (Current == judgement)
+        if (Current == judgement || judgement.Problem == LayoutProblem.Undetermined)
         {
+            // HKL が取れないウィンドウ（コンソールなど）では直前の判定を保つ
             return;
         }
 
@@ -71,8 +72,14 @@ internal sealed unsafe class LayoutMonitor
         RunLater(ConnectCheckDelayMs, () =>
         {
             var judgement = DetectForeground();
-            Current = judgement;
             Logger.Log($"配列判定（接続後）: {judgement}");
+            if (judgement.Problem == LayoutProblem.Undetermined)
+            {
+                // 次のキー押下で判定する
+                return;
+            }
+
+            Current = judgement;
             Handle(_policy.OnJudged(judgement, IsRemoteSession), judgement);
         });
     }
@@ -132,9 +139,15 @@ internal sealed unsafe class LayoutMonitor
         RunLater(VerifyDelayMs, () =>
         {
             var after = DetectForeground();
-            Current = after;
             var result = _policy.OnCorrectionResult(after);
-            Logger.Log($"是正（パターンA）結果: {(result == CorrectionAction.None ? "成功" : "失敗")} 是正後 {after}");
+            string outcome = after.Problem == LayoutProblem.Undetermined ? "確認不可"
+                : result == CorrectionAction.None ? "成功" : "失敗";
+            Logger.Log($"是正（パターンA）結果: {outcome} 是正後 {after}");
+            if (after.Problem != LayoutProblem.Undetermined)
+            {
+                Current = after;
+            }
+
             Handle(result, after);
         });
     }

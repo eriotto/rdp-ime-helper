@@ -16,6 +16,9 @@ internal enum LayoutProblem
 {
     None,
 
+    /// <summary>HKL が取得できなかった（0）。コンソールウィンドウが前面のときなどに起きる。判定しない。</summary>
+    Undetermined,
+
     /// <summary>パターンA：HKL が日本語以外。LoadKeyboardLayout で戻す。</summary>
     NonJapanese,
 
@@ -28,7 +31,8 @@ internal readonly record struct LayoutJudgement(nint Hkl, char Char, LayoutKind 
     public const int LangIdJapanese = 0x0411;
 
     public LayoutProblem Problem =>
-        !IsJapanese ? LayoutProblem.NonJapanese
+        Hkl == 0 ? LayoutProblem.Undetermined
+        : !IsJapanese ? LayoutProblem.NonJapanese
         : Kind != LayoutKind.Jis ? LayoutProblem.JapaneseNotJis
         : LayoutProblem.None;
 
@@ -127,5 +131,7 @@ internal sealed class CorrectionPolicy
     }
 
     public CorrectionAction OnCorrectionResult(LayoutJudgement after) =>
-        after.IsJis ? CorrectionAction.None : CorrectionAction.NotifyCorrectionFailed;
+        after.IsJis || after.Problem == LayoutProblem.Undetermined
+            ? CorrectionAction.None
+            : CorrectionAction.NotifyCorrectionFailed;
 }

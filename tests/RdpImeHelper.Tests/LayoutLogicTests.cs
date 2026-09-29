@@ -228,3 +228,55 @@ public class CorrectionPolicyTests
         Assert.Equal(CorrectionAction.None, _p.OnJudged(PatternA, true));
     }
 }
+
+public class UndeterminedHklTests
+{
+    // コンソールウィンドウが前面のときなど、GetKeyboardLayout が 0 を返す（実機ログで確認）
+    private static readonly LayoutJudgement Zero = LayoutJudgement.Judge(0, '[');
+    private static readonly LayoutJudgement PatternA = LayoutJudgement.Judge(0x04090409, '[');
+
+    [Theory]
+    [InlineData('[')]
+    [InlineData('@')]
+    [InlineData('\0')]
+    public void ZeroHkl_IsUndetermined_NotPatternA(char c)
+    {
+        var j = LayoutJudgement.Judge(0, c);
+        Assert.Equal(LayoutProblem.Undetermined, j.Problem);
+        Assert.False(j.IsJis);
+    }
+
+    [Fact]
+    public void ZeroHkl_IsNeverCorrected_AndDoesNotConsumeTheCorrection()
+    {
+        var p = new CorrectionPolicy();
+        for (int i = 0; i < 10; i++)
+        {
+            Assert.Equal(CorrectionAction.None, p.OnJudged(Zero, isRemoteSession: true));
+        }
+
+        // 本物のパターンA には1回分が残っている
+        Assert.Equal(CorrectionAction.CorrectLayout, p.OnJudged(PatternA, true));
+    }
+
+    [Fact]
+    public void ZeroHklAfterCorrection_IsNotReportedAsFailure()
+    {
+        var p = new CorrectionPolicy();
+        Assert.Equal(CorrectionAction.CorrectLayout, p.OnJudged(PatternA, true));
+        Assert.Equal(CorrectionAction.None, p.OnCorrectionResult(Zero));
+    }
+
+    [Fact]
+    public void RealLogSequence_OnlyJapaneseAndZero_NeverCorrects()
+    {
+        // 2026-09-30 の実機ログ：日本語(0x04110411, '[') と 0 が交互に出る
+        var p = new CorrectionPolicy();
+        var japaneseUs = LayoutJudgement.Judge(0x04110411, '[');
+        Assert.Equal(CorrectionAction.NotifyJapaneseNotJis, p.OnJudged(japaneseUs, true));
+        foreach (var j in new[] { Zero, japaneseUs, Zero, japaneseUs })
+        {
+            Assert.Equal(CorrectionAction.None, p.OnJudged(j, true));
+        }
+    }
+}
