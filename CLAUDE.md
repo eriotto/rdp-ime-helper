@@ -95,3 +95,9 @@ iPad（英語配列キーボード）から Windows App 経由で RDP 接続し�
 - ログ：HKL、配列判定結果、送信したスキャンコード、是正の実行結果を出力
 - 変換表・設定はコード内に直書き（設定ファイルは作らない）
 - 過剰な抽象化をしない
+
+## 開発メモ
+- Ubuntu の apt 版 dotnet-sdk-8.0 には WindowsDesktop SDK が含まれず、net8.0-windows をビルドできない。
+  Microsoft 版 SDK（packages.microsoft.com の deb を展開したもの等）を使うこと
+- テストプロジェクトは net8.0。アプリ本体（net8.0-windows）を参照せず、`src/RdpImeHelper/Logic/` 配下を
+  ソースリンクで取り込む。Win32 非依存のロジックは Logic/ に置くこと

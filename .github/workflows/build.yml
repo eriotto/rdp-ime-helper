@@ -1,0 +1,36 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+      - name: Publish (self-contained single exe)
+        run: dotnet publish src/RdpImeHelper/RdpImeHelper.csproj --configuration Release --runtime win-x64 --output publish
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RdpImeHelper-win-x64
+          path: publish/RdpImeHelper.exe
+          if-no-files-found: error
