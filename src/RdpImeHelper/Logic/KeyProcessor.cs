@@ -31,6 +31,7 @@ internal sealed class KeyProcessor
     public const int VkLWin = 0x5B;
     public const int VkRWin = 0x5C;
     public const int VkDummy = 0xE8;
+    public const int VkPacket = 0xE7;
     public const int ScanAlt = 0x38;
     public const int ScanLShift = 0x2A;
     public const int ScanRShift = 0x36;
@@ -98,6 +99,19 @@ internal sealed class KeyProcessor
             VkRMenu => ProcessAlt(e, AltSide.Right),
             _ => ProcessOther(e, conversionEnabled),
         };
+    }
+
+    /// <summary>
+    /// 追跡している状態をすべて「離されている」に戻す。
+    /// ロック画面・セキュアデスクトップ・RDP 切断中の key-up はフックに届かないため、
+    /// セッション切替やデスクトップ切替のときに呼ぶ（古い Shift 状態で Shift を押し直す事故を防ぐ）。
+    /// </summary>
+    public KeyResult Reset(string reason)
+    {
+        _lShift = _rShift = _lCtrl = _rCtrl = _lWin = _rWin = _lAlt = _rAlt = false;
+        _pending = AltSide.None;
+        _convertibleDown.Clear();
+        return LogOnly($"状態リセット（{reason}）");
     }
 
     /// <summary>WH_MOUSE_LL でボタン押下を検出したときに呼ぶ。</summary>
@@ -205,7 +219,8 @@ internal sealed class KeyProcessor
 
     private KeyResult ProcessConversion(KeyEvent e, bool conversionEnabled)
     {
-        if (e.Extended || !ConvertibleScanCodes.Contains(e.ScanCode))
+        // VK_PACKET（Unicode 入力）の scanCode は文字コードなので対象外
+        if (e.Vk == VkPacket || e.Extended || !ConvertibleScanCodes.Contains(e.ScanCode))
         {
             return KeyResult.PassThrough;
         }
@@ -233,6 +248,13 @@ internal sealed class KeyProcessor
         {
             // CapsLock はリピートで切り替わり続けないよう最初の1回だけ
             return new KeyResult(true, Array.Empty<KeyAction>());
+        }
+
+        if (target.ScanCode != scan && _convertibleDown.TryGetValue(target.ScanCode, out bool targetConverted) && !targetConverted)
+        {
+            // 送信先のキーが素通しで押下中（例：- を押したまま =）。送信の up でシステム上は離れるので、
+            // そのキーの後の物理的な離しは握りつぶす（対応する down の無い up を渡さない）
+            _convertibleDown[target.ScanCode] = true;
         }
 
         var actions = new List<KeyAction>(8);

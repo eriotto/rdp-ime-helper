@@ -17,3 +17,7 @@ GetWindowThreadProcessId
 GetGUIThreadInfo
 ImmGetDefaultIMEWnd
 SendMessageTimeout
+SetWinEventHook
+UnhookWinEvent
+EVENT_SYSTEM_DESKTOPSWITCH
+WINEVENT_OUTOFCONTEXT

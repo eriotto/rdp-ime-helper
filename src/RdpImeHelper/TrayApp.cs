@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Win32;
 using Windows.Win32;
 using Windows.Win32.UI.WindowsAndMessaging;
 
@@ -9,6 +10,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly NotifyIcon _notifyIcon;
     private readonly KeyboardHook _hook;
     private readonly System.Windows.Forms.Timer _timer;
+    private readonly SynchronizationContext _uiContext = SynchronizationContext.Current!;
 
     public TrayApp()
     {
@@ -42,6 +44,14 @@ internal sealed class TrayApp : ApplicationContext
         UpdateTooltip();
 
         _hook.Install();
+        SystemEvents.SessionSwitch += OnSessionSwitch;
+    }
+
+    // ロック・切断中の key-up はフックに届かないため、セッション切替時に状態を戻す
+    // （SystemEvents は専用スレッドで発火するので UI スレッドへ回す）
+    private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
+    {
+        _uiContext.Post(_ => _hook.ResetState($"セッション切替 {e.Reason}"), null);
     }
 
     private void UpdateTooltip()
@@ -62,6 +72,7 @@ internal sealed class TrayApp : ApplicationContext
 
     protected override void ExitThreadCore()
     {
+        SystemEvents.SessionSwitch -= OnSessionSwitch;
         _timer.Dispose();
         _hook.Dispose();
         _notifyIcon.Visible = false;

@@ -18,6 +18,8 @@ internal static class Program
         try
         {
             ApplicationConfiguration.Initialize();
+            // KeyboardHook が IME 操作を UI スレッドへ回すため、Control 生成前でも同期コンテキストを用意する
+            SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
             Application.Run(new TrayApp());
         }
         catch (Exception ex)

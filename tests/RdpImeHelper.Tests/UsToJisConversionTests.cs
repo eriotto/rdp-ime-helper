@@ -121,14 +121,14 @@ public class UsToJisConversionTests
         return data;
     }
 
-    public static TheoryData<int, bool, int> AllEntriesWithCtrlAltWin()
+    public static TheoryData<int, bool, bool, int> AllEntriesWithCtrlAltWin()
     {
-        var data = new TheoryData<int, bool, int>();
-        foreach (var (scan, shift) in UsToJis.Keys)
+        var data = new TheoryData<int, bool, bool, int>();
+        foreach (var row in AllEntriesWithShiftSides())
         {
             foreach (int vk in new[] { VkLControl, VkRControl, VkLMenu, VkRMenu, VkLWin, VkRWin })
             {
-                data.Add(scan, shift, vk);
+                data.Add((int)row[0], (bool)row[1], (bool)row[2], vk);
             }
         }
 
@@ -348,9 +348,9 @@ public class UsToJisConversionTests
 
     [Theory]
     [MemberData(nameof(AllEntriesWithCtrlAltWin))]
-    public void Entry_WithCtrlAltWin_IsNotConverted(int scan, bool shift, int modifier)
+    public void Entry_WithCtrlAltWin_IsNotConverted(int scan, bool l, bool r, int modifier)
     {
-        HoldShift(shift, false);
+        HoldShift(l, r);
         Modifier(modifier, true);
 
         for (int i = 0; i < 3; i++)
@@ -368,47 +368,98 @@ public class UsToJisConversionTests
     }
 
     [Theory]
-    [MemberData(nameof(AllEntries))]
-    public void Entry_AfterCtrlReleased_IsConvertedAgain(int scan, bool shift)
+    [MemberData(nameof(AllEntriesWithShiftSides))]
+    public void Entry_AfterCtrlReleased_IsConvertedAgain(int scan, bool l, bool r)
     {
-        HoldShift(shift, false);
-        Modifier(VkLControl, true);
+        HoldShift(l, r);
+        Modifier(VkRControl, true);
         Assert.False(Press(scan).Suppress);
         Assert.False(Release(scan).Suppress);
-        Modifier(VkLControl, false);
+        Modifier(VkRControl, false);
 
-        Assert.True(Press(scan).Suppress);
+        // 前回の素通しの名残（元キーの up やリピート扱い）が無いこと
+        var again = Press(scan);
+        Assert.True(again.Suppress);
+        Assert.Equal(Expected(UsToJis[(scan, l || r)], l, r), Sent(again));
+        Assert.DoesNotContain(again.Actions, a => a is Log log && log.Message.Contains("リピート"));
         Assert.True(Release(scan).Suppress);
     }
 
     [Theory]
-    [MemberData(nameof(AllEntries))]
-    public void Entry_CtrlPressedDuringRepeat_ReleasesNothingStuck(int scan, bool shift)
+    [MemberData(nameof(AllEntriesWithShiftSides))]
+    public void Entry_CtrlPressedDuringRepeat_ReleasesNothingStuck(int scan, bool l, bool r)
     {
         // 変換中に Ctrl を押す → リピートは素通し → 離しも素通し（元キーの down が渡っているので）
-        HoldShift(shift, false);
+        HoldShift(l, r);
         Assert.True(Press(scan).Suppress);
         Modifier(VkLControl, true);
-        Assert.False(Press(scan, 1500).Suppress);
-        Assert.False(Release(scan).Suppress);
+        Assert.Equal(KeyResult.PassThrough, Press(scan, 1500));
+        Assert.Equal(KeyResult.PassThrough, Release(scan));
     }
 
     [Theory]
-    [MemberData(nameof(AllEntries))]
-    public void Entry_CtrlReleasedDuringRepeat_ReleasesOriginalBeforeConverting(int scan, bool shift)
+    [MemberData(nameof(AllEntriesWithShiftSides))]
+    public void Entry_CtrlReleasedDuringRepeat_ReleasesOriginalBeforeConverting(int scan, bool l, bool r)
     {
         // Ctrl+キーで素通し中に Ctrl を離す → 次のリピートは変換。素通しで押下中の元キーを先に離す
-        HoldShift(shift, false);
+        HoldShift(l, r);
         Modifier(VkLControl, true);
         Assert.False(Press(scan).Suppress);
         Modifier(VkLControl, false);
 
         var repeat = Press(scan, 1500);
         Assert.True(repeat.Suppress);
-        var sent = Sent(repeat);
-        Assert.Equal(new SendKey(0x100 + scan, scan, false, true), sent[0]);
+        var expected = new[] { new SendKey(0x100 + scan, scan, false, true) }
+            .Concat(Expected(UsToJis[(scan, l || r)], l, r));
+        Assert.Equal(expected, Sent(repeat));
 
         Assert.True(Release(scan).Suppress);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllEntriesWithShiftSides))]
+    public void Entry_PressReleasePress_ConvertsBothTimesIdentically(int scan, bool l, bool r)
+    {
+        HoldShift(l, r);
+        var expected = Expected(UsToJis[(scan, l || r)], l, r);
+        for (int i = 0; i < 2; i++)
+        {
+            var down = Press(scan, (uint)(1000 + i * 100));
+            Assert.True(down.Suppress);
+            Assert.Equal(expected, Sent(down));
+            Assert.DoesNotContain(down.Actions, a => a is Log log && log.Message.Contains("リピート"));
+            Assert.True(Release(scan).Suppress);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(AllEntriesWithShiftSides))]
+    public void Entry_ConvertedKeyUpDuringAlt_IsStillSuppressed(int scan, bool l, bool r)
+    {
+        // 変換済みキーを押したまま Alt を押し、キーを離す：離しは握りつぶし、Alt 単押しは取り消す
+        HoldShift(l, r);
+        Assert.True(Press(scan).Suppress);
+        _p.Process(Mod(VkLMenu, true) with { Time = 1000 }, true);
+
+        var up = Release(scan);
+        Assert.True(up.Suppress);
+        Assert.Empty(Sent(up));
+
+        var altUp = _p.Process(Mod(VkLMenu, false) with { Time = 1050 }, true);
+        Assert.DoesNotContain(altUp.Actions, a => a is SetIme);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllEntries))]
+    public void Entry_PassedKeyUpDuringAlt_PassesThrough(int scan, bool shift)
+    {
+        // Ctrl 併用で素通しした down の離しは、Alt 押下中でも素通し
+        HoldShift(shift, false);
+        Modifier(VkLControl, true);
+        Assert.False(Press(scan).Suppress);
+        Modifier(VkLControl, false);
+        _p.Process(Mod(VkLMenu, true), true);
+        Assert.False(Release(scan).Suppress);
     }
 
     // ---- 変換の無効条件 ----
@@ -437,11 +488,24 @@ public class UsToJisConversionTests
         Assert.False(Release(0x1A).Suppress);
     }
 
-    [Fact]
-    public void ExtendedScanCode_IsNotConverted()
+    [Theory]
+    [MemberData(nameof(AllEntries))]
+    public void ExtendedScanCode_IsNotConverted(int scan, bool shift)
     {
-        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(0x6F, 0x35, true, true, 0), true));
-        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(0x6F, 0x35, true, false, 0), true));
+        // 変換表と同じ下位バイトでも E0 付きは別キー
+        HoldShift(shift, false);
+        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(0x100 + scan, scan, true, true, 0), true));
+        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(0x100 + scan, scan, true, false, 0), true));
+    }
+
+    [Theory]
+    [MemberData(nameof(AllEntries))]
+    public void VkPacket_IsNotConverted(int scan, bool shift)
+    {
+        // VK_PACKET（Unicode 入力）の scanCode は文字コード。')' = 0x29 などが変換表と衝突しても素通し
+        HoldShift(shift, false);
+        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(VkPacket, scan, false, true, 0), true));
+        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(VkPacket, scan, false, false, 0), true));
     }
 
     [Fact]
@@ -582,7 +646,96 @@ public class UsToJisConversionTests
         Assert.Equal(new[] { LShift(false), Tap(0x0C)[0], Tap(0x0C)[1], LShift(true) }, after);
     }
 
+    // ---- 送信先キーが素通しで押下中（ロールオーバー） ----
+
+    [Fact]
+    public void Rollover_TargetKeyHeldAsPassThrough_ItsPhysicalUpIsSuppressed()
+    {
+        // - を押したまま = を押す：= は Shift+0x0C を送る（0x0C の up を含む）
+        Assert.Equal(KeyResult.PassThrough, Press(0x0C));
+        var eq = Press(0x0D);
+        Assert.True(eq.Suppress);
+        Assert.Equal(new[] { LShift(false), Tap(0x0C)[0], Tap(0x0C)[1], LShift(true) }, Sent(eq));
+
+        // システム上 0x0C は既に離れているので、物理的な - の離しは渡さない
+        var minusUp = Release(0x0C);
+        Assert.True(minusUp.Suppress);
+        Assert.Empty(minusUp.Actions);
+        Assert.True(Release(0x0D).Suppress);
+
+        // 以降は通常どおり
+        Assert.Equal(KeyResult.PassThrough, Press(0x0C));
+        Assert.Equal(KeyResult.PassThrough, Release(0x0C));
+    }
+
+    [Fact]
+    public void Rollover_TargetKeyHeld_RepeatAfterInjectedUpPassesAgain()
+    {
+        // 7 を押したまま ' を押す（Shift+0x08）→ 7 のリピートは素通しの down、離しも素通し
+        Assert.Equal(KeyResult.PassThrough, Press(0x08));
+        Assert.True(Press(0x28).Suppress);
+        Assert.True(Release(0x28).Suppress);
+        Assert.Equal(KeyResult.PassThrough, Press(0x08, 1500));
+        Assert.Equal(KeyResult.PassThrough, Release(0x08));
+    }
+
+    // ---- 状態リセット（ロック・セキュアデスクトップ・切断で key-up を取りこぼした場合） ----
+
+    [Fact]
+    public void Reset_AfterMissedShiftUp_DoesNotRepressShift()
+    {
+        Modifier(VkLShift, true);
+        // （Shift の up はロック画面で取りこぼし）
+        Assert.Contains(_p.Reset("test").Actions, a => a is Log);
+
+        // 2 は Shift なし扱い：素通しし、Shift を押し直さない
+        Assert.Equal(KeyResult.PassThrough, Press(0x03));
+        Assert.Equal(KeyResult.PassThrough, Release(0x03));
+        var eq = Sent(Press(0x0D));
+        Assert.True(NetShift(eq).L is null or false);
+    }
+
+    [Theory]
+    [InlineData(VkLWin)]
+    [InlineData(VkRWin)]
+    [InlineData(VkLControl)]
+    [InlineData(VkLMenu)]
+    public void Reset_AfterMissedModifierUp_ConversionAndAltTapWorkAgain(int modifier)
+    {
+        _p.Process(Mod(modifier, true), true);
+        Assert.False(Press(0x1A).Suppress);
+        Release(0x1A);
+
+        _p.Reset("test");
+        Assert.True(Press(0x1A).Suppress);
+        Assert.True(Release(0x1A).Suppress);
+
+        _p.Process(Mod(VkLMenu, true) with { Time = 2000 }, true);
+        var r = _p.Process(Mod(VkLMenu, false) with { Time = 2050 }, true);
+        Assert.Contains(new SetIme(false), r.Actions);
+    }
+
+    [Fact]
+    public void Reset_AfterMissedKeyUp_NextPressIsFresh()
+    {
+        Assert.True(Press(ScanCapsLock).Suppress);
+        // （CapsLock の up を取りこぼし）
+        _p.Reset("test");
+        var again = Press(ScanCapsLock);
+        Assert.Equal(new[] { LShift(false), Tap(ScanCapsLock)[0], Tap(ScanCapsLock)[1], LShift(true) }, Sent(again));
+    }
+
     // ---- CapsLock ----
+
+    [Fact]
+    public void CapsLock_EachPressToggles()
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            Assert.Equal(new[] { LShift(false), Tap(ScanCapsLock)[0], Tap(ScanCapsLock)[1], LShift(true) }, Sent(Press(ScanCapsLock)));
+            Assert.True(Release(ScanCapsLock).Suppress);
+        }
+    }
 
     [Fact]
     public void CapsLock_SendsShiftPlusCapsLock()
