@@ -21,3 +21,7 @@ SetWinEventHook
 UnhookWinEvent
 EVENT_SYSTEM_DESKTOPSWITCH
 WINEVENT_OUTOFCONTEXT
+GetKeyboardLayout
+MapVirtualKeyEx
+LoadKeyboardLayout
+PostMessage

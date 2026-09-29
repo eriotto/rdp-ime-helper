@@ -13,6 +13,7 @@ namespace RdpImeHelper;
 internal sealed class KeyboardHook : IDisposable
 {
     private readonly KeyProcessor _processor = new();
+    private readonly LayoutMonitor _layout;
     private readonly SynchronizationContext _uiContext;
     private readonly HOOKPROC _keyboardProc;
     private readonly HOOKPROC _mouseProc;
@@ -22,8 +23,9 @@ internal sealed class KeyboardHook : IDisposable
     private UnhookWindowsHookExSafeHandle? _mouseHook;
     private volatile bool _forceConversion;
 
-    public KeyboardHook()
+    public KeyboardHook(LayoutMonitor layout)
     {
+        _layout = layout;
         _uiContext = SynchronizationContext.Current
             ?? throw new InvalidOperationException("UI スレッドで生成してください。");
         _keyboardProc = KeyboardProc;
@@ -38,7 +40,7 @@ internal sealed class KeyboardHook : IDisposable
         set => _forceConversion = value;
     }
 
-    public bool IsConversionActive => _forceConversion || LayoutMonitor.IsConversionConditionMet();
+    public bool IsConversionActive => _forceConversion || _layout.IsConversionConditionMet;
 
     public void Install()
     {
@@ -113,6 +115,12 @@ internal sealed class KeyboardHook : IDisposable
                         (data->flags & KBDLLHOOKSTRUCT_FLAGS.LLKHF_EXTENDED) != 0,
                         msg == PInvoke.WM_KEYDOWN || msg == PInvoke.WM_SYSKEYDOWN,
                         data->time);
+
+                    if (e.IsDown)
+                    {
+                        // キー押下ごとに前面ウィンドウの配列を判定（初出 HKL 以外はキャッシュ参照のみ）
+                        _layout.OnKeyDown();
+                    }
 
                     var result = _processor.Process(e, IsConversionActive);
                     Execute(result);

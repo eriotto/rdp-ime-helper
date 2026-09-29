@@ -5,12 +5,21 @@ internal static class Program
     private const string MutexName = @"Local\RdpImeHelper.SingleInstance";
 
     [STAThread]
-    private static void Main()
+    private static int Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == LayoutMonitor.SetIgnoreRemoteKeyboardLayoutArg)
+        {
+            // トレイメニューから runas で昇格起動された：書き込んで終了（二重起動チェックより前）
+            Logger.Start();
+            int code = LayoutMonitor.WriteIgnoreRemoteKeyboardLayout();
+            Logger.Stop();
+            return code;
+        }
+
         using var mutex = new Mutex(initiallyOwned: true, MutexName, out bool createdNew);
         if (!createdNew)
         {
-            return;
+            return 0;
         }
 
         Logger.Start();
@@ -21,6 +30,7 @@ internal static class Program
             // KeyboardHook が IME 操作を UI スレッドへ回すため、Control 生成前でも同期コンテキストを用意する
             SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
             Application.Run(new TrayApp());
+            return 0;
         }
         catch (Exception ex)
         {
