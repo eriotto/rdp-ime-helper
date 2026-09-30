@@ -186,8 +186,19 @@ internal sealed class KeyProcessor
         });
     }
 
+    /// <summary>
+    /// メニューバー抑止用のダミーキー（未割り当ての VK）。クライアント側のツール（alt-ime-ahk 等）が
+    /// Alt と一緒に送り、RDP 経由で届く。本物のキー操作ではないので Alt 単押しを取り消さず素通しする。
+    /// </summary>
+    internal static bool IsDummyKey(int vk) => vk is 0x07 or VkDummy or 0xFF;
+
     private KeyResult ProcessOther(KeyEvent e, bool conversionEnabled)
     {
+        if (IsDummyKey(e.Vk))
+        {
+            return KeyResult.PassThrough;
+        }
+
         bool isModifier = true;
         switch (e.Vk)
         {

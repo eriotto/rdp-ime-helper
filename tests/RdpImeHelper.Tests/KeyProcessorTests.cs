@@ -360,3 +360,47 @@ public class KeyProcessorAltTapTests
         Assert.Equal(KeyResult.PassThrough, _p.Process(Up(VkA, 1010)));
     }
 }
+
+public class KeyProcessorDummyKeyTests
+{
+    private readonly KeyProcessor _p = new();
+
+    private static KeyEvent Alt(bool right, bool down, uint time) =>
+        new(right ? KeyProcessor.VkRMenu : KeyProcessor.VkLMenu, 0x38, right, down, time);
+
+    // 実機ログ（2026-09-30、英語配列 Windows ノートから接続）：Alt 押下直後に vk=0xFF が届き単押しが取り消された
+    [Theory]
+    [InlineData(0xFF, 0x00, false)]
+    [InlineData(0xFF, 0x00, true)]
+    [InlineData(0xFF, 0x7E, false)]
+    [InlineData(0xE8, 0x00, false)]
+    [InlineData(0x07, 0x00, true)]
+    public void DummyKeyDuringAlt_DoesNotCancelTap(int vk, int scan, bool right)
+    {
+        _p.Process(Alt(right, true, 1000));
+        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(vk, scan, false, true, 1001)));
+        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(vk, scan, false, false, 1002)));
+
+        var r = _p.Process(Alt(right, false, 1100));
+        Assert.True(r.Suppress);
+        Assert.Contains(new SetIme(right), r.Actions);
+    }
+
+    [Fact]
+    public void DummyKey_IsPassedThroughEvenWithConversionEnabled()
+    {
+        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(0xFF, 0x29, false, true, 0), true));
+        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(0xFF, 0x29, false, false, 0), true));
+    }
+
+    [Fact]
+    public void RealKeyAfterDummyKey_StillCancelsTap()
+    {
+        _p.Process(Alt(false, true, 1000));
+        _p.Process(new KeyEvent(0xFF, 0, false, true, 1001));
+        _p.Process(new KeyEvent(0x09, 0x0F, false, true, 1050)); // Tab
+        var r = _p.Process(Alt(false, false, 1100));
+        Assert.False(r.Suppress);
+        Assert.DoesNotContain(r.Actions, a => a is SetIme);
+    }
+}
