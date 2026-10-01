@@ -73,8 +73,11 @@ internal sealed class TrayApp : ApplicationContext
         var reason = e.Reason;
         _uiContext.Post(_ =>
         {
-            // ロック・切断中の key-up はフックに届かないため、キー状態を戻す
-            _hook.ResetState($"セッション切替 {reason}");
+            // ロック・切断中の key-up はフックに届かないため、キー状態を戻す。
+            // 再接続・ロック解除時は、システム側に残った Shift などの押しっぱなしも解除する
+            bool release = reason is SessionSwitchReason.RemoteConnect
+                or SessionSwitchReason.ConsoleConnect or SessionSwitchReason.SessionUnlock;
+            _hook.ResetState($"セッション切替 {reason}", release);
             if (reason is SessionSwitchReason.RemoteConnect or SessionSwitchReason.ConsoleConnect)
             {
                 _layout.OnConnected(reason.ToString());

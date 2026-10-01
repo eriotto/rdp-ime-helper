@@ -404,3 +404,55 @@ public class KeyProcessorDummyKeyTests
         Assert.DoesNotContain(r.Actions, a => a is SetIme);
     }
 }
+
+public class KeyProcessorResetTests
+{
+    private readonly KeyProcessor _p = new();
+
+    [Fact]
+    public void Reset_WithoutRelease_SendsNothing()
+    {
+        var r = _p.Reset("test");
+        Assert.False(r.Suppress);
+        Assert.DoesNotContain(r.Actions, a => a is SendKey);
+    }
+
+    // 実機（2026-10-01）：RDP 再接続後に Shift が押しっぱなしで残り、`;` が `+`、`a` が `A` になった
+    [Fact]
+    public void Reset_WithRelease_SendsKeyUpForShiftCtrlAlt_BothSides()
+    {
+        var keys = _p.Reset("再接続", releaseModifiers: true).Actions.OfType<SendKey>().ToArray();
+
+        Assert.Contains(new SendKey(KeyProcessor.VkLShift, 0x2A, false, true), keys);
+        Assert.Contains(new SendKey(KeyProcessor.VkRShift, 0x36, false, true), keys);
+        Assert.Contains(new SendKey(KeyProcessor.VkLControl, 0x1D, false, true), keys);
+        Assert.Contains(new SendKey(KeyProcessor.VkRControl, 0x1D, true, true), keys);
+        Assert.Contains(new SendKey(KeyProcessor.VkLMenu, 0x38, false, true), keys);
+        Assert.Contains(new SendKey(KeyProcessor.VkRMenu, 0x38, true, true), keys);
+
+        // 離しだけ（ダミーキー以外を押さない）
+        Assert.All(keys.Where(k => k.Vk != KeyProcessor.VkDummy), k => Assert.True(k.KeyUp));
+        // Win は送らない（単独の離しでスタートメニューが開きうる）
+        Assert.DoesNotContain(keys, k => k.Vk is KeyProcessor.VkLWin or KeyProcessor.VkRWin);
+    }
+
+    [Fact]
+    public void Reset_WithRelease_SendsDummyKeyBeforeAltUp()
+    {
+        var keys = _p.Reset("再接続", releaseModifiers: true).Actions.OfType<SendKey>().ToList();
+        int dummyUp = keys.FindIndex(k => k.Vk == KeyProcessor.VkDummy && k.KeyUp);
+        int firstAlt = keys.FindIndex(k => k.Vk is KeyProcessor.VkLMenu or KeyProcessor.VkRMenu);
+        Assert.True(dummyUp >= 0 && dummyUp < firstAlt);
+        Assert.Contains(new SendKey(KeyProcessor.VkDummy, 0, false, false), keys.Take(dummyUp));
+    }
+
+    [Fact]
+    public void Reset_WithRelease_ClearsTrackedShift_SoConversionDoesNotRepressIt()
+    {
+        _p.Process(new KeyEvent(KeyProcessor.VkLShift, 0x2A, false, true, 0), true);
+        _p.Reset("再接続", releaseModifiers: true);
+
+        // 2 は Shift なし扱い：素通し、Shift の押し直しなし
+        Assert.Equal(KeyResult.PassThrough, _p.Process(new KeyEvent(0x32, 0x03, false, true, 0), true));
+    }
+}

@@ -75,7 +75,8 @@ internal sealed class KeyboardHook : IDisposable
     }
 
     /// <summary>追跡中のキー状態を戻す。UI スレッド（フックと同じスレッド）から呼ぶこと。</summary>
-    public void ResetState(string reason) => Execute(_processor.Reset(reason));
+    public void ResetState(string reason, bool releaseModifiers = false) =>
+        Execute(_processor.Reset(reason, releaseModifiers));
 
     public void Dispose()
     {

@@ -33,6 +33,7 @@ internal sealed class KeyProcessor
     public const int VkDummy = 0xE8;
     public const int VkPacket = 0xE7;
     public const int ScanAlt = 0x38;
+    public const int ScanCtrl = 0x1D;
     public const int ScanLShift = 0x2A;
     public const int ScanRShift = 0x36;
     public const int ScanCapsLock = 0x3A;
@@ -106,12 +107,34 @@ internal sealed class KeyProcessor
     /// ロック画面・セキュアデスクトップ・RDP 切断中の key-up はフックに届かないため、
     /// セッション切替やデスクトップ切替のときに呼ぶ（古い Shift 状態で Shift を押し直す事故を防ぐ）。
     /// </summary>
-    public KeyResult Reset(string reason)
+    /// <param name="releaseModifiers">
+    /// true なら Shift/Ctrl/Alt（左右）の離しも送る。RDP の切断・再接続で離しが届かず、
+    /// システム側で押しっぱなしになっていることがあるため（実機で Shift が残るのを確認）。
+    /// 押されていないキーの離しは無害。Alt はメニューバー抑止のダミーキーを先に送る。
+    /// Win は単独の離しでスタートメニューが開きうるので送らない。
+    /// </param>
+    public KeyResult Reset(string reason, bool releaseModifiers = false)
     {
         _lShift = _rShift = _lCtrl = _rCtrl = _lWin = _rWin = _lAlt = _rAlt = false;
         _pending = AltSide.None;
         _convertibleDown.Clear();
-        return LogOnly($"状態リセット（{reason}）");
+        if (!releaseModifiers)
+        {
+            return LogOnly($"状態リセット（{reason}）");
+        }
+
+        return new KeyResult(false, new KeyAction[]
+        {
+            new Log($"状態リセット（{reason}）: 修飾キーの離しを送信"),
+            new SendKey(VkLShift, ScanLShift, false, true),
+            new SendKey(VkRShift, ScanRShift, false, true),
+            new SendKey(VkLControl, ScanCtrl, false, true),
+            new SendKey(VkRControl, ScanCtrl, true, true),
+            new SendKey(VkDummy, 0, false, false),
+            new SendKey(VkDummy, 0, false, true),
+            new SendKey(VkLMenu, ScanAlt, false, true),
+            new SendKey(VkRMenu, ScanAlt, true, true),
+        });
     }
 
     /// <summary>WH_MOUSE_LL でボタン押下を検出したときに呼ぶ。</summary>
