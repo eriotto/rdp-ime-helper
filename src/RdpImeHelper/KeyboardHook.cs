@@ -13,6 +13,7 @@ namespace RdpImeHelper;
 internal sealed class KeyboardHook : IDisposable
 {
     private readonly KeyProcessor _processor = new();
+    private readonly InjectionOrder _order = new();
     private readonly LayoutMonitor _layout;
     private readonly SynchronizationContext _uiContext;
     private readonly HOOKPROC _keyboardProc;
@@ -107,7 +108,15 @@ internal sealed class KeyboardHook : IDisposable
             try
             {
                 var data = (KBDLLHOOKSTRUCT*)lParam.Value;
-                if ((data->flags & KBDLLHOOKSTRUCT_FLAGS.LLKHF_INJECTED) == 0)
+                if ((data->flags & KBDLLHOOKSTRUCT_FLAGS.LLKHF_INJECTED) != 0)
+                {
+                    // injected は処理しない。自分が送ったキーなら、キューから出たことだけ数える
+                    if (data->dwExtraInfo == InputSender.Marker)
+                    {
+                        _order.OnOwnInjectedSeen();
+                    }
+                }
+                else
                 {
                     uint msg = (uint)wParam.Value;
                     var e = new KeyEvent(
@@ -127,6 +136,14 @@ internal sealed class KeyboardHook : IDisposable
                     Execute(result);
                     if (result.Suppress)
                     {
+                        return new LRESULT(1);
+                    }
+
+                    // 自分の送ったキーがまだキューに残っているなら、素通しせず送り直して後ろに並べる
+                    long now = Environment.TickCount64;
+                    if (_order.ShouldReinject(now))
+                    {
+                        _order.OnSent((int)InputSender.Reinject(e), now);
                         return new LRESULT(1);
                     }
                 }
@@ -189,6 +206,7 @@ internal sealed class KeyboardHook : IDisposable
         if (keys != null)
         {
             uint sent = InputSender.Send(keys);
+            _order.OnSent((int)sent, Environment.TickCount64);
             Logger.Log($"SendInput {sent}/{keys.Count}: " + string.Join(" ", keys.Select(Describe)));
         }
     }

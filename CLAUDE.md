@@ -107,3 +107,6 @@ iPad（英語配列キーボード）から Windows App 経由で RDP 接続し�
   Microsoft 版 SDK（packages.microsoft.com の deb を展開したもの等）を使うこと
 - テストプロジェクトは net8.0。アプリ本体（net8.0-windows）を参照せず、`src/RdpImeHelper/Logic/` 配下を
   ソースリンクで取り込む。Win32 非依存のロジックは Logic/ に置くこと
+- フック内で SendInput したキーは、既に入力キューに並んでいる物理キーの後ろに入る（RDP はキーをまとめて送ってくる）。
+  そのため自分の送ったキーがフックに戻ってくるまでの物理キーは、素通しせず送り直して順序を保つ（InjectionOrder）。
+  これを怠ると、Shift の押し直しが物理的な Shift の離しを追い越して押しっぱなしになる（実機で確認）
