@@ -35,7 +35,9 @@ iPad（英語配列キーボード）から Windows App 経由で RDP 接続し�
 - 押下時間が500msを超えたら単押し扱いしない
 
 ### US→JIS変換
-- 有効条件：RDPセッション（GetSystemMetrics(SM_REMOTESESSION)）かつ 現在の配列がJIS
+- 有効条件：RDPセッション（GetSystemMetrics(SM_REMOTESESSION)）かつ 現在の配列がJIS かつ 接続元のキーボードが日本語以外
+  - 接続元のキーボードは GetKeyboardType(0) で判定する（RDP では接続元が申告した値。4 = 101/102、7 = 日本語）
+  - 接続元が JIS キーボード（7）なら JIS 配列のセッションでそのまま入力できるので変換しない
 - Unicode送信は禁止（IMEを素通りするため）。必ずJIS側のスキャンコードで送る
 - Shift状態が異なる場合は Shift離す→キー→Shift押し直し
 - キーリピートに対応
@@ -78,6 +80,10 @@ iPad（英語配列キーボード）から Windows App 経由で RDP 接続し�
 - 契機：WTSRegisterSessionNotification の接続/再接続、および判定でJISでなくなったとき
 - パターンA（HKLが日本語以外）：LoadKeyboardLayout("00000411") + WM_INPUTLANGCHANGEREQUEST で戻す
 - パターンB（HKLは日本語だが101配列の挙動）：実行時是正はしない。トレイ通知のみ
+  - 原因：Layout File が KBDJPN.DLL だと、接続元が申告したキーボード種別（4 = 101）で 101 配列になる。
+    セッションの配列はその後の再接続でも維持される
+  - 対処：HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layouts\00000411 の Layout File を KBD106.DLL にすると、
+    接続元に関係なく JIS に固定できる（サインアウト後に有効。実機で確認済み）
 - 起動時に HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layout\IgnoreRemoteKeyboardLayout を確認。
   未設定ならトレイメニューに「設定する」を表示し、自身を runas で昇格起動して書き込む
 - 是正は接続1回につき1回まで。失敗時は通知のみ
@@ -95,3 +101,12 @@ iPad（英語配列キーボード）から Windows App 経由で RDP 接続し�
 - ログ：HKL、配列判定結果、送信したスキャンコード、是正の実行結果を出力
 - 変換表・設定はコード内に直書き（設定ファイルは作らない）
 - 過剰な抽象化をしない
+
+## 開発メモ
+- Ubuntu の apt 版 dotnet-sdk-8.0 には WindowsDesktop SDK が含まれず、net8.0-windows をビルドできない。
+  Microsoft 版 SDK（packages.microsoft.com の deb を展開したもの等）を使うこと
+- テストプロジェクトは net8.0。アプリ本体（net8.0-windows）を参照せず、`src/RdpImeHelper/Logic/` 配下を
+  ソースリンクで取り込む。Win32 非依存のロジックは Logic/ に置くこと
+- フック内で SendInput したキーは、既に入力キューに並んでいる物理キーの後ろに入る（RDP はキーをまとめて送ってくる）。
+  そのため自分の送ったキーがフックに戻ってくるまでの物理キーは、素通しせず送り直して順序を保つ（InjectionOrder）。
+  これを怠ると、Shift の押し直しが物理的な Shift の離しを追い越して押しっぱなしになる（実機で確認）

@@ -1,0 +1,116 @@
+name: winget
+
+# winget-pkgs へのマニフェスト提出（portable 形式）。
+# - 既に winget-pkgs にあるとき：wingetcreate update で新バージョンの更新PRを出す
+# - まだ無いとき（初回）：winget/templates から生成したマニフェストを wingetcreate submit で提出する
+# 必要なシークレット：WINGET_TOKEN（public_repo スコープの classic PAT。GITHUB_TOKEN では winget-pkgs を fork できない）
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      dry_run:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'リリースタグ（例: v0.1.0）'
+        type: string
+        required: true
+      dry_run:
+        description: 'マニフェストの生成だけ行い、PR は出さない'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_ID: eriotto.RdpImeHelper
+  PACKAGE_PATH: manifests/e/eriotto/RdpImeHelper
+
+jobs:
+  winget:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release asset
+        id: rel
+        shell: pwsh
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ($env:TAG -notmatch '^v(\d+\.\d+\.\d+)$') { throw "タグは vX.Y.Z 形式にしてください: $env:TAG" }
+          "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
+          "url=https://github.com/${{ github.repository }}/releases/download/$env:TAG/RdpImeHelper.exe" >> $env:GITHUB_OUTPUT
+
+      - name: Download wingetcreate
+        shell: pwsh
+        run: Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+
+      - name: Check whether the package already exists in winget-pkgs
+        id: exists
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/microsoft/winget-pkgs/contents/$env:PACKAGE_PATH" --silent 2>$null
+          $exists = $LASTEXITCODE -eq 0
+          "exists=$($exists.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          Write-Host "winget-pkgs に $env:PACKAGE_ID は$(if ($exists) { 'あります（更新）' } else { 'ありません（新規提出）' })"
+          exit 0
+
+      - name: Generate manifests (update)
+        if: steps.exists.outputs.exists == 'true'
+        shell: pwsh
+        run: >
+          .\wingetcreate.exe update $env:PACKAGE_ID
+          --version ${{ steps.rel.outputs.version }}
+          --urls "${{ steps.rel.outputs.url }}|x64"
+          --out out
+
+      - name: Generate manifests (new, from templates)
+        if: steps.exists.outputs.exists != 'true'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.rel.outputs.version }}
+          URL: ${{ steps.rel.outputs.url }}
+        run: |
+          Invoke-WebRequest $env:URL -OutFile RdpImeHelper.exe
+          $sha = (Get-FileHash RdpImeHelper.exe -Algorithm SHA256).Hash
+          $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+          $dir = "out/$env:PACKAGE_PATH/$env:VERSION"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Get-ChildItem winget/templates/*.yaml | ForEach-Object {
+            (Get-Content $_ -Raw -Encoding utf8) `
+              -replace '__VERSION__', $env:VERSION `
+              -replace '__URL__', $env:URL `
+              -replace '__SHA256__', $sha `
+              -replace '__RELEASE_DATE__', $date |
+              Set-Content (Join-Path $dir $_.Name) -Encoding utf8 -NoNewline
+          }
+          Get-ChildItem $dir | ForEach-Object { Write-Host "--- $($_.Name)"; Get-Content $_ }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winget-manifests-${{ steps.rel.outputs.version }}
+          path: out
+          if-no-files-found: error
+
+      - name: Submit PR to microsoft/winget-pkgs
+        if: ${{ !inputs.dry_run }}
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          VERSION: ${{ steps.rel.outputs.version }}
+        run: |
+          if (-not $env:WINGET_TOKEN) {
+            Write-Host "::warning::WINGET_TOKEN が未設定のため winget-pkgs への PR は出しません（マニフェストは成果物に保存済み）"
+            exit 0
+          }
+          $dir = Get-ChildItem -Recurse -Directory out | Where-Object { $_.Name -eq $env:VERSION } | Select-Object -First 1
+          if (-not $dir) { throw "生成したマニフェストが見つかりません" }
+          .\wingetcreate.exe submit --token $env:WINGET_TOKEN --prtitle "New version: $env:PACKAGE_ID version $env:VERSION" $dir.FullName

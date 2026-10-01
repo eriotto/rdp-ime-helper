@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.locale.1.6.0.schema.json
+PackageIdentifier: eriotto.RdpImeHelper
+PackageVersion: __VERSION__
+PackageLocale: ja-JP
+Publisher: eriotto
+PackageName: RdpImeHelper
+License: MIT
+ShortDescription: iPad（英語配列キーボード）から RDP 接続した日本語 Windows で快適に日本語入力するための常駐ツール
+Description: |-
+  左Alt単押しで IME オフ、右Alt単押しで IME オン。
+  Windows 側の配列は日本語（JIS）のまま、英語配列キーボードの刻印どおりに記号を入力できます。
+Tags:
+- ime
+- rdp
+- キーボード
+- リモートデスクトップ
+- 日本語入力
+ManifestType: locale
+ManifestVersion: 1.6.0
