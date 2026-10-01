@@ -280,3 +280,53 @@ public class UndeterminedHklTests
         }
     }
 }
+
+public class ConversionConditionTests
+{
+    private static readonly LayoutJudgement Jis = LayoutJudgement.Judge(0x04110411, '@');
+    private static readonly LayoutJudgement Us101 = LayoutJudgement.Judge(0x04110411, '[');
+    private static readonly LayoutJudgement English = LayoutJudgement.Judge(0x04090409, '[');
+
+    // 実機確認（2026-10-01）：Layout File=KBD106.DLL のサーバーに英語配列ノートから接続 → 配列 JIS、KeyboardType=4
+    [Fact]
+    public void JisSession_FromUsKeyboardClient_Converts()
+    {
+        Assert.True(ConversionCondition.IsMet(true, Jis, 4));
+    }
+
+    [Fact]
+    public void JisSession_FromJisKeyboardClient_DoesNotConvert()
+    {
+        // 日本語 Windows（JIS キーボード）から接続：JIS のまま正しく入力できる
+        Assert.False(ConversionCondition.IsMet(true, Jis, ConversionCondition.KeyboardTypeJapanese));
+    }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(7)]
+    public void Us101Session_NeverConverts(int keyboardType)
+    {
+        // KBDJPN.DLL で英語配列として動いているセッション：記号は刻印どおり出るので変換不要
+        Assert.False(ConversionCondition.IsMet(true, Us101, keyboardType));
+    }
+
+    [Fact]
+    public void NonJapaneseLayout_NeverConverts()
+    {
+        Assert.False(ConversionCondition.IsMet(true, English, 4));
+    }
+
+    [Fact]
+    public void Undetermined_NeverConverts()
+    {
+        Assert.False(ConversionCondition.IsMet(true, null, 4));
+    }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(7)]
+    public void LocalSession_NeverConverts(int keyboardType)
+    {
+        Assert.False(ConversionCondition.IsMet(false, Jis, keyboardType));
+    }
+}

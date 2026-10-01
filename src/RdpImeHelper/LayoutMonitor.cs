@@ -45,8 +45,13 @@ internal sealed unsafe class LayoutMonitor
     private static string KeyboardTypeText =>
         $"キーボード種別={PInvoke.GetKeyboardType(0)}/{PInvoke.GetKeyboardType(1)}";
 
-    /// <summary>US→JIS 変換の有効条件（RDP セッション かつ 配列が JIS）。</summary>
-    public bool IsConversionConditionMet => IsRemoteSession && Current is { IsJis: true };
+    /// <summary>接続元が JIS キーボード（GetKeyboardType = 7）か。</summary>
+    public static bool IsClientKeyboardJapanese =>
+        PInvoke.GetKeyboardType(0) == ConversionCondition.KeyboardTypeJapanese;
+
+    /// <summary>US→JIS 変換の有効条件（RDP セッション かつ 配列が JIS かつ 接続元のキーボードが日本語以外）。</summary>
+    public bool IsConversionConditionMet =>
+        ConversionCondition.IsMet(IsRemoteSession, Current, PInvoke.GetKeyboardType(0));
 
     /// <summary>
     /// フックの keydown ごとに呼ぶ。前面ウィンドウのスレッドの HKL を取得して判定する。
@@ -109,7 +114,7 @@ internal sealed unsafe class LayoutMonitor
             case CorrectionAction.NotifyJapaneseNotJis:
                 Logger.Log($"パターンB（日本語だが JIS として振る舞わない）: 通知のみ {judgement}");
                 _notify(
-                    "キーボード配列が JIS ではありません（日本語 / 101 配列）。IgnoreRemoteKeyboardLayout の設定と再接続を試してください。",
+                    "キーボード配列が JIS ではありません（日本語 / 101 配列）。Keyboard Layouts\\00000411 の Layout File を KBD106.DLL にしてサインアウトすると JIS に固定できます。",
                     ToolTipIcon.Warning);
                 break;
             case CorrectionAction.NotifyCorrectionFailed:

@@ -97,7 +97,9 @@ internal sealed class TrayApp : ApplicationContext
             { Problem: LayoutProblem.NonJapanese } => "日本語以外",
             _ => "日本語(非JIS)",
         };
-        string conversion = _hook.IsConversionActive ? (_hook.ForceConversion ? "ON（強制）" : "ON") : "OFF";
+        string conversion = _hook.IsConversionActive ? (_hook.ForceConversion ? "ON（強制）" : "ON")
+            : _layout.Current is { IsJis: true } && LayoutMonitor.IsClientKeyboardJapanese ? "OFF（JISキーボード）"
+            : "OFF";
         _notifyIcon.Text = $"RDP：{(isRemote ? "○" : "×")} ／ 配列：{layout} ／ 変換：{conversion}";
     }
 

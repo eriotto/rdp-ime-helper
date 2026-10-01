@@ -135,3 +135,17 @@ internal sealed class CorrectionPolicy
             ? CorrectionAction.None
             : CorrectionAction.NotifyCorrectionFailed;
 }
+
+/// <summary>US→JIS 変換の有効条件。</summary>
+internal static class ConversionCondition
+{
+    /// <summary>GetKeyboardType(0) の日本語キーボード（106/109）。RDP では接続元が申告した値。</summary>
+    public const int KeyboardTypeJapanese = 7;
+
+    /// <summary>
+    /// RDP セッション かつ 配列が JIS かつ 接続元のキーボードが日本語以外（英語配列など）。
+    /// 接続元が JIS キーボードなら、JIS 配列のセッションでそのまま正しく入力できるので変換しない。
+    /// </summary>
+    public static bool IsMet(bool isRemoteSession, LayoutJudgement? layout, int clientKeyboardType) =>
+        isRemoteSession && layout is { IsJis: true } && clientKeyboardType != KeyboardTypeJapanese;
+}

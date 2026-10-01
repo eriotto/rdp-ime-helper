@@ -35,6 +35,22 @@ RdpImeHelper
 RDP クライアントのキーボード配列（英語）が接続先に持ち込まれないよう、レジストリの `IgnoreRemoteKeyboardLayout` を設定しておくと安定します。
 未設定のときはトレイメニューに「IgnoreRemoteKeyboardLayout を設定する（管理者）」が表示されます。選ぶと UAC の確認が出て、書き込みます。設定は再接続（またはサインアウト）後に有効になります。
 
+### 接続先を常に JIS 配列にする（推奨）
+
+接続先の日本語配列は、既定（`KBDJPN.DLL`）では接続元が申告したキーボードの種類で 101/106 が決まり、最初に接続した端末の配列がその後も維持されます。
+接続元に関係なく JIS に固定するには、管理者の PowerShell で次を実行し、**サインアウト**してから接続し直してください。
+
+```powershell
+# バックアップ
+reg export "HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layouts\00000411" "$env:USERPROFILE\Desktop\00000411-backup.reg"
+# JIS（106/109）に固定
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layouts\00000411" /v "Layout File" /t REG_SZ /d KBD106.DLL /f
+```
+
+元に戻すときは `KBD106.DLL` を `KBDJPN.DLL` にして実行します。PC 全体の設定なので、コンソール（PC の前で直接使う場合）も JIS になります。
+
+US→JIS 変換は、接続元が英語配列キーボードのとき（iPad・Mac・英語配列の Windows など）だけ有効になります。接続元が JIS キーボードの場合は変換しません。
+
 ## アップデート
 
 ```powershell
