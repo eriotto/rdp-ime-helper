@@ -39,6 +39,12 @@ internal sealed unsafe class LayoutMonitor
     public static bool IsRemoteSession =>
         PInvoke.GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_REMOTESESSION) != 0;
 
+    /// <summary>
+    /// クライアントが申告したキーボードの種類（RDP では接続元の値）。4 = 101/102（英語）、7 = 日本語（サブタイプ 2 = 106/109）。
+    /// </summary>
+    private static string KeyboardTypeText =>
+        $"キーボード種別={PInvoke.GetKeyboardType(0)}/{PInvoke.GetKeyboardType(1)}";
+
     /// <summary>US→JIS 変換の有効条件（RDP セッション かつ 配列が JIS）。</summary>
     public bool IsConversionConditionMet => IsRemoteSession && Current is { IsJis: true };
 
@@ -56,7 +62,7 @@ internal sealed unsafe class LayoutMonitor
         }
 
         Current = judgement;
-        Logger.Log($"配列判定: {judgement}");
+        Logger.Log($"配列判定: {judgement} {KeyboardTypeText}");
         RequestIfNeeded(_policy.OnJudged(judgement, IsRemoteSession), judgement);
     }
 
@@ -72,7 +78,7 @@ internal sealed unsafe class LayoutMonitor
         RunLater(ConnectCheckDelayMs, () =>
         {
             var judgement = DetectForeground();
-            Logger.Log($"配列判定（接続後）: {judgement}");
+            Logger.Log($"配列判定（接続後）: {judgement} {KeyboardTypeText}");
             if (judgement.Problem == LayoutProblem.Undetermined)
             {
                 // 次のキー押下で判定する
