@@ -26,3 +26,7 @@ MapVirtualKeyEx
 LoadKeyboardLayout
 PostMessage
 GetKeyboardType
+AttachThreadInput
+GetKeyboardState
+GetAsyncKeyState
+GetCurrentThreadId

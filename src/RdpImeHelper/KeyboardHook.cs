@@ -24,6 +24,9 @@ internal sealed class KeyboardHook : IDisposable
     private UnhookWindowsHookExSafeHandle? _mouseHook;
     private volatile bool _forceConversion;
 
+    /// <summary>診断：Shift を送ったあと、前面スレッドのキー状態をログに出す。</summary>
+    public bool DiagnoseKeyState { get; set; }
+
     public KeyboardHook(LayoutMonitor layout)
     {
         _layout = layout;
@@ -207,11 +210,19 @@ internal sealed class KeyboardHook : IDisposable
         {
             uint sent = InputSender.Send(keys);
             _order.OnSent((int)sent, Environment.TickCount64);
-            Logger.Log($"SendInput {sent}/{keys.Count}: " + string.Join(" ", keys.Select(Describe)));
+            string described = string.Join(" ", keys.Select(Describe));
+            Logger.Log($"SendInput {sent}/{keys.Count}: " + described);
+            if (DiagnoseKeyState && keys.Any(k => k.Vk is KeyProcessor.VkLShift or KeyProcessor.VkRShift))
+            {
+                // 送ったキーが処理されたころに確認する（UI スレッドで。フック内では行わない）
+                _uiContext.Post(_ => KeyStateProbe.LogLater(described), null);
+            }
         }
     }
 
     private static string Describe(SendKey k) =>
-        (k.ScanCode != 0 ? $"sc=0x{(k.Extended ? "E0" : "")}{k.ScanCode:X2}" : $"vk=0x{k.Vk:X2}")
+        (k.ScanCode == 0 ? $"vk=0x{k.Vk:X2}"
+            : InputSender.IsModifier(k.Vk) ? $"vk=0x{k.Vk:X2}(sc=0x{(k.Extended ? "E0" : "")}{k.ScanCode:X2})"
+            : $"sc=0x{(k.Extended ? "E0" : "")}{k.ScanCode:X2}")
         + (k.KeyUp ? "↑" : "↓");
 }

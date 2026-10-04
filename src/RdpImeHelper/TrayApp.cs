@@ -42,7 +42,15 @@ internal sealed class TrayApp : ApplicationContext
         Logger.Log($"IgnoreRemoteKeyboardLayout: {(ignoreRemoteSet ? "設定済み" : "未設定")}");
 
         var menu = new ContextMenuStrip();
+        var diagItem = new ToolStripMenuItem("診断：Shift の状態をログに記録") { CheckOnClick = true };
+        diagItem.CheckedChanged += (_, _) =>
+        {
+            _hook.DiagnoseKeyState = diagItem.Checked;
+            Logger.Log($"診断（Shift の状態）: {(diagItem.Checked ? "ON" : "OFF")}");
+        };
+
         menu.Items.Add(forceItem);
+        menu.Items.Add(diagItem);
         menu.Items.Add(ignoreRemoteItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("ログを開く", null, (_, _) => OpenLog());

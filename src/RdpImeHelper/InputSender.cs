@@ -5,7 +5,9 @@ using Windows.Win32.UI.Input.KeyboardAndMouse;
 
 namespace RdpImeHelper;
 
-// SendInput ラッパー。ScanCode 指定のキーは KEYEVENTF_SCANCODE で送る。
+// SendInput ラッパー。文字キーは KEYEVENTF_SCANCODE で送る（JIS 側のスキャンコード）。
+// 修飾キー（Shift/Ctrl/Alt/Win）は VK＋スキャンコードで送る。KEYEVENTF_SCANCODE で送った Shift の離しが
+// 前面アプリのキー状態に反映されず、Shift が残る現象が実機で起きたため（AutoHotkey 等と同じ方式にする）。
 // 送ったキーには目印（dwExtraInfo）を付け、フックで自分の送ったキーを見分けられるようにする。
 internal static class InputSender
 {
@@ -62,8 +64,9 @@ internal static class InputSender
         for (int i = 0; i < keys.Count; i++)
         {
             var k = keys[i];
+            bool byVk = k.ScanCode == 0 || IsModifier(k.Vk);
             KEYBD_EVENT_FLAGS flags = 0;
-            if (k.ScanCode != 0)
+            if (!byVk)
             {
                 flags |= KEYBD_EVENT_FLAGS.KEYEVENTF_SCANCODE;
             }
@@ -85,7 +88,7 @@ internal static class InputSender
                 {
                     ki = new KEYBDINPUT
                     {
-                        wVk = k.ScanCode != 0 ? 0 : (VIRTUAL_KEY)k.Vk,
+                        wVk = byVk ? (VIRTUAL_KEY)k.Vk : 0,
                         wScan = (ushort)k.ScanCode,
                         dwFlags = flags,
                         dwExtraInfo = Marker,
@@ -96,4 +99,8 @@ internal static class InputSender
 
         return PInvoke.SendInput(inputs, Marshal.SizeOf<INPUT>());
     }
+
+    public static bool IsModifier(int vk) => vk is
+        KeyProcessor.VkLShift or KeyProcessor.VkRShift or KeyProcessor.VkLControl or KeyProcessor.VkRControl
+        or KeyProcessor.VkLMenu or KeyProcessor.VkRMenu or KeyProcessor.VkLWin or KeyProcessor.VkRWin;
 }

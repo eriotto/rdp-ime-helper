@@ -19,7 +19,7 @@ iPad（英語配列キーボード）から Windows App 経由で RDP 接続し�
 - KeyProcessor：純粋ロジック。Win32非依存。Alt単押し判定の状態機械とUS→JIS変換テーブル。
   入力（スキャンコード, keydown/up, 修飾状態, 判定結果フラグ）→ 出力（送信するアクション列）
 - KeyboardHook：WH_KEYBOARD_LL の登録・解除。LLKHF_INJECTED 付きは無視
-- InputSender：SendInput（KEYEVENTF_SCANCODE）ラッパー。Shift状態の一時調整
+- InputSender：SendInput ラッパー。文字キーは KEYEVENTF_SCANCODE、修飾キーは VK＋スキャンコードで送る。Shift状態の一時調整
 - ImeController：ImmGetDefaultIMEWnd + WM_IME_CONTROL(0x283)/IMC_SETOPENSTATUS(0x6)
 - LayoutMonitor：配列判定・是正
 - TrayApp：NotifyIcon、メニュー、状態表示
@@ -110,3 +110,6 @@ iPad（英語配列キーボード）から Windows App 経由で RDP 接続し�
 - フック内で SendInput したキーは、既に入力キューに並んでいる物理キーの後ろに入る（RDP はキーをまとめて送ってくる）。
   そのため自分の送ったキーがフックに戻ってくるまでの物理キーは、素通しせず送り直して順序を保つ（InjectionOrder）。
   これを怠ると、Shift の押し直しが物理的な Shift の離しを追い越して押しっぱなしになる（実機で確認）
+- KEYEVENTF_SCANCODE で送った Shift の離しが前面アプリのキー状態に反映されず、Shift+2 が ` に、
+  日本語入力中の a が A になる現象が実機で起きた。修飾キーは VK＋スキャンコードで送る（要実機確認）。
+  トレイの「診断：Shift の状態をログに記録」で、変換後の前面スレッドの Shift 状態をログに出せる
