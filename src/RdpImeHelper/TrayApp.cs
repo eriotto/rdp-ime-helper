@@ -11,6 +11,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly LayoutMonitor _layout;
     private readonly System.Windows.Forms.Timer _timer;
     private const int ReleaseRetryDelayMs = 2000;
+    private const int KeyLogMinutes = 2;
 
     private readonly SynchronizationContext _uiContext = SynchronizationContext.Current!;
 
@@ -52,7 +53,19 @@ internal sealed class TrayApp : ApplicationContext
         };
 
         menu.Items.Add(forceItem);
+        // 押したキーをすべて記録する（パスワードも残るので、一定時間で自動的に OFF）
+        var keyLogItem = new ToolStripMenuItem($"診断：押したキーを記録（{KeyLogMinutes}分間・パスワード注意）") { CheckOnClick = true };
+        var keyLogTimer = new System.Windows.Forms.Timer { Interval = KeyLogMinutes * 60 * 1000 };
+        keyLogTimer.Tick += (_, _) => keyLogItem.Checked = false;
+        keyLogItem.CheckedChanged += (_, _) =>
+        {
+            _hook.LogAllKeys = keyLogItem.Checked;
+            keyLogTimer.Enabled = keyLogItem.Checked;
+            Logger.Log($"診断（押したキー）: {(keyLogItem.Checked ? "ON" : "OFF")}");
+        };
+
         menu.Items.Add(diagItem);
+        menu.Items.Add(keyLogItem);
         menu.Items.Add(ignoreRemoteItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("ログを開く", null, (_, _) => OpenLog());

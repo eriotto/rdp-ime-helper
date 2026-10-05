@@ -27,6 +27,9 @@ internal sealed class KeyboardHook : IDisposable
     /// <summary>診断：Shift を送ったあと、前面スレッドのキー状態をログに出す。</summary>
     public bool DiagnoseKeyState { get; set; }
 
+    /// <summary>診断：届いたキー（非 injected）をすべてログに出す。パスワードも記録されるので期間限定で使う。</summary>
+    public bool LogAllKeys { get; set; }
+
     public KeyboardHook(LayoutMonitor layout)
     {
         _layout = layout;
@@ -128,6 +131,11 @@ internal sealed class KeyboardHook : IDisposable
                         (data->flags & KBDLLHOOKSTRUCT_FLAGS.LLKHF_EXTENDED) != 0,
                         msg == PInvoke.WM_KEYDOWN || msg == PInvoke.WM_SYSKEYDOWN,
                         data->time);
+
+                    if (LogAllKeys)
+                    {
+                        Logger.Log($"キー: vk=0x{e.Vk:X2} sc=0x{(e.Extended ? "E0" : "")}{e.ScanCode:X2} {(e.IsDown ? "↓" : "↑")} t={e.Time}");
+                    }
 
                     if (e.IsDown)
                     {
