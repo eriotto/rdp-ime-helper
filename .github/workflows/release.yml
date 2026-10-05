@@ -1,0 +1,62 @@
+name: release
+
+# vX.Y.Z タグの push で、テスト → self-contained 単一 exe をビルド → GitHub Releases にアップロード → winget 更新PR
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ($env:TAG -notmatch '^v(\d+\.\d+\.\d+)$') { throw "タグは vX.Y.Z 形式にしてください: $env:TAG" }
+          "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Publish (self-contained single exe)
+        run: >
+          dotnet publish src/RdpImeHelper/RdpImeHelper.csproj
+          --configuration Release --runtime win-x64 --output publish
+          -p:Version=${{ steps.ver.outputs.version }}
+
+      - name: SHA256
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash publish/RdpImeHelper.exe -Algorithm SHA256).Hash
+          "$hash  RdpImeHelper.exe" | Set-Content -Encoding ascii publish/RdpImeHelper.exe.sha256
+          Write-Host $hash
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: >
+          gh release create $env:TAG
+          publish/RdpImeHelper.exe publish/RdpImeHelper.exe.sha256
+          --title "RdpImeHelper $env:TAG" --generate-notes --verify-tag
+
+  # GITHUB_TOKEN で作った Release は別ワークフローの release イベントを起動しないため、ここから呼ぶ
+  winget:
+    needs: release
+    uses: ./.github/workflows/winget.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
