@@ -10,6 +10,8 @@ internal sealed class TrayApp : ApplicationContext
     private readonly KeyboardHook _hook;
     private readonly LayoutMonitor _layout;
     private readonly System.Windows.Forms.Timer _timer;
+    private const int ReleaseRetryDelayMs = 2000;
+
     private readonly SynchronizationContext _uiContext = SynchronizationContext.Current!;
 
     public TrayApp()
@@ -89,6 +91,16 @@ internal sealed class TrayApp : ApplicationContext
             if (reason is SessionSwitchReason.RemoteConnect or SessionSwitchReason.ConsoleConnect)
             {
                 _layout.OnConnected(reason.ToString());
+
+                // 接続直後はまだロック画面（セキュアデスクトップ）で SendInput が失敗することがある（実機で 0/8）。
+                // ロック解除のイベントが来ない接続もあるので、少し待ってからもう一度離しを送る
+                var retry = new System.Windows.Forms.Timer { Interval = ReleaseRetryDelayMs };
+                retry.Tick += (_, _) =>
+                {
+                    retry.Dispose();
+                    _hook.ResetState($"接続後の再送 {reason}", releaseModifiers: true);
+                };
+                retry.Start();
             }
         }, null);
     }
